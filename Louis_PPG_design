@@ -1,0 +1,121 @@
+import cv2
+import numpy as np
+from scipy.signal import savgol_filter
+import matplotlib.pyplot as plt
+
+# Step 1: Extract mp4 input and convert it into frames
+def extract_frames_from_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(frame)
+
+    cap.release()
+    return frames
+
+# Step 2: ROI Multimodal Approaches
+def calculate_motion_mask(frames):
+    motion_masks = []
+    prev_frame = cv2.cvtColor(frames[0], cv2.COLOR_BGR2GRAY)
+
+    for frame in frames:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame_diff = cv2.absdiff(gray, prev_frame)
+        _, motion_mask = cv2.threshold(frame_diff, 30, 255, cv2.THRESH_BINARY)
+        motion_masks.append(motion_mask)
+        prev_frame = gray
+
+    return motion_masks
+
+# Step 3: Color-Based ROI Selection
+def calculate_color_roi(frames):
+    color_rois = []
+
+    for frame in frames:
+        lower_color = np.array([0, 100, 0])  # Lower bound for green color (BGR)
+        upper_color = np.array([50, 255, 50])  # Upper bound for green color (BGR)
+
+        # Create a mask for the color-based ROI
+        color_mask = cv2.inRange(frame, lower_color, upper_color)
+
+        # Apply the color mask to the frame
+        color_roi = cv2.bitwise_and(frame, frame, mask=color_mask)
+        color_rois.append(color_roi)
+
+    return color_rois
+
+# Step 4: Colour Signal Extraction
+def extract_ppg_signal(frames, motion_masks):
+    ppg_signal = []
+
+    for i in range(len(frames)):
+        frame = frames[i]
+        motion_mask = motion_masks[i]
+
+        # Apply the motion mask to the frame
+        masked_frame = cv2.bitwise_and(frame, frame, mask=motion_mask)
+
+        # Extract PPG signal using the green channel
+        green_channel = masked_frame[:, :, 1]
+        ppg_value = np.mean(green_channel)
+        ppg_signal.append(ppg_value)
+
+    return ppg_signal
+
+# Step 5: Savitzky-Golay Filter for Preprocessing
+def preprocess_ppg_signal(ppg_signal):
+    # Apply Savitzky-Golay filter for noise reduction and smoothing
+    smoothed_ppg_signal = savgol_filter(ppg_signal, window_length=21, polyorder=3)
+
+    return smoothed_ppg_signal
+
+# Step 6: Heart rate and Heart rate variability Features Extraction
+def extract_hr_and_hrv(ppg_signal):
+    # Calculate heart rate (you can modify this based on your needs)
+    heart_rate = 60 / np.mean(np.diff(np.where(ppg_signal > np.mean(ppg_signal))))
+
+    # Calculate heart rate variability (HRV) using standard deviation
+    hrv = np.std(np.diff(np.where(ppg_signal > np.mean(ppg_signal) )))
+
+    return heart_rate, hrv
+
+# Step 7: Visualize the final output signal
+def visualize_ppg_signal(ppg_signal, smoothed_ppg_signal):
+    plt.figure(figsize=(12, 6))
+    plt.plot(ppg_signal, label='PPG Signal', color='blue')
+    plt.plot(smoothed_ppg_signal, label='Smoothed PPG Signal', color='red')
+    plt.xlabel('Frame Index')
+    plt.ylabel('PPG Value')
+    plt.title('PPG Signal and Smoothed PPG Signal')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# Main code
+if __name__ == '__main__':
+    video_path = 'test_input.mp4'  # Replace with the path to your mp4 video file
+
+    # Step 1: Extract mp4 input and convert it into frames
+    frames = extract_frames_from_video(video_path)
+
+    # Step 2: ROI Multimodal Approaches (motion detection)
+    motion_masks = calculate_motion_mask(frames)
+    
+     # Step 3: Color-Based ROI Selection
+    color_rois = calculate_color_roi(frames)
+
+    # Step 4: Colour Signal Extraction
+    ppg_signal = extract_ppg_signal(frames, motion_masks)
+
+    # Step 5: Savitzky-Golay Filter for Preprocessing
+    smoothed_ppg_signal = preprocess_ppg_signal(ppg_signal)
+
+    # Step 6: Heart rate and Heart rate variability Features Extraction
+    heart_rate, hrv = extract_hr_and_hrv(smoothed_ppg_signal)
+
+    # Step 7: Visualize the final output signal
+    visualize_ppg_signal(ppg_signal, smoothed_ppg_signal)
